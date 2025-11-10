@@ -1,0 +1,44 @@
+# Large files
+*.keras
+*.h5
+*.zip
+*.rar
+*.7z
+
+# Dataset folders
+archive*/
+data/
+dataset/
+
+# Model files
+*.pkl
+*.model
+
+# Generated files
+*.png
+*.jpg
+*.jpeg
+sample_predictions.png
+training_history.png
+test_result.png
+multiple_test_results.png
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

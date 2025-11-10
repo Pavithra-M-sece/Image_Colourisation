@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Colorization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <canvas id="dots-canvas"></canvas>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-palette"></i> AI Image Colorization</h1>
+            <p>Transform your black & white photos into vibrant colored images using advanced AI</p>
+        </div>
+
+        <div class="main-card">
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                    <div class="upload-text">Drop your image here or click anywhere to browse</div>
+                    <div class="upload-subtext">Supports JPG, PNG, GIF, BMP (Max 16MB)</div>
+                    <input type="file" id="fileInput" class="file-input" accept="image/*">
+                </div>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div class="loading-text">AI is colorizing your image...</div>
+            </div>
+
+            <div class="error" id="error" style="display: none;"></div>
+
+            <div class="results-section" id="results">
+                <div class="results-grid">
+                    <div class="result-card">
+                        <h3><i class="fas fa-image"></i> Original (Grayscale)</h3>
+                        <img id="grayImage" class="result-image" alt="Grayscale version">
+                    </div>
+                    <div class="result-card">
+                        <h3><i class="fas fa-magic"></i> AI Colorized</h3>
+                        <img id="colorizedImage" class="result-image" alt="Colorized version">
+                    </div>
+                </div>
+                
+                <div class="download-section">
+                    <button class="download-btn" id="downloadBtn">
+                        <i class="fas fa-download"></i> Download Colorized Image
+                    </button>
+                    <button class="upload-another-btn" id="uploadAnotherBtn">
+                        <i class="fas fa-plus"></i> Upload Another Image
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <i class="fas fa-brain feature-icon"></i>
+                <div class="feature-title">Advanced AI</div>
+                <div class="feature-desc">Powered by deep learning neural networks for realistic colorization</div>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-bolt feature-icon"></i>
+                <div class="feature-title">Fast Processing</div>
+                <div class="feature-desc">Get your colorized images in seconds with optimized algorithms</div>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-shield-alt feature-icon"></i>
+                <div class="feature-title">Privacy First</div>
+                <div class="feature-desc">Your images are processed locally and never stored on our servers</div>
+            </div>
+            <div class="feature-card">
+                <i class="fas fa-mobile-alt feature-icon"></i>
+                <div class="feature-title">Mobile Friendly</div>
+                <div class="feature-desc">Works perfectly on all devices - desktop, tablet, and mobile</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const loading = document.getElementById('loading');
+        const results = document.getElementById('results');
+        const error = document.getElementById('error');
+        const grayImage = document.getElementById('grayImage');
+        const colorizedImage = document.getElementById('colorizedImage');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const uploadAnotherBtn = document.getElementById('uploadAnotherBtn');
+
+        // Click to upload
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError('Please select a valid image file.');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                showError('File size must be less than 16MB.');
+                return;
+            }
+
+            uploadImage(file);
+        }
+
+        function uploadImage(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            hideError();
+            results.style.display = 'none';
+            loading.style.display = 'block';
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    grayImage.src = data.gray_image;
+                    colorizedImage.src = data.colorized_image;
+                    results.style.display = 'block';
+                    
+                    // Setup download functionality
+                    downloadBtn.onclick = () => {
+                        const link = document.createElement('a');
+                        link.href = data.colorized_image;
+                        link.download = 'colorized_image.png';
+                        link.click();
+                    };
+                    
+                    // Setup upload another functionality
+                    uploadAnotherBtn.onclick = () => {
+                        results.style.display = 'none';
+                        fileInput.value = '';
+                        hideError();
+                    };
+                } else {
+                    showError(data.error || 'An error occurred while processing your image.');
+                }
+            })
+            .catch(err => {
+                loading.style.display = 'none';
+                showError('Network error. Please try again.');
+            });
+        }
+
+        function showError(message) {
+            error.textContent = message;
+            error.style.display = 'block';
+            setTimeout(() => {
+                hideError();
+            }, 5000);
+        }
+
+        function hideError() {
+            error.style.display = 'none';
+        }
+
+        // Interactive Dots Canvas
+        const canvas = document.getElementById('dots-canvas');
+        const ctx = canvas.getContext('2d');
+        let dots = [];
+        let mouse = { x: 0, y: 0 };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function createDots() {
+            dots = [];
+            const numDots = Math.floor((canvas.width * canvas.height) / 15000);
+            
+            for (let i = 0; i < numDots; i++) {
+                dots.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    radius: Math.random() * 2 + 1
+                });
+            }
+        }
+
+        function drawDots() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            dots.forEach(dot => {
+                // Update position
+                dot.x += dot.vx;
+                dot.y += dot.vy;
+                
+                // Bounce off edges
+                if (dot.x < 0 || dot.x > canvas.width) dot.vx *= -1;
+                if (dot.y < 0 || dot.y > canvas.height) dot.vy *= -1;
+                
+                // Keep dots in bounds
+                dot.x = Math.max(0, Math.min(canvas.width, dot.x));
+                dot.y = Math.max(0, Math.min(canvas.height, dot.y));
+                
+                // Draw dot
+                ctx.beginPath();
+                ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(139, 92, 246, 0.6)';
+                ctx.fill();
+                
+                // Draw connections to nearby dots
+                dots.forEach(otherDot => {
+                    const dx = dot.x - otherDot.x;
+                    const dy = dot.y - otherDot.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < 100) {
+                        ctx.beginPath();
+                        ctx.moveTo(dot.x, dot.y);
+                        ctx.lineTo(otherDot.x, otherDot.y);
+                        ctx.strokeStyle = `rgba(139, 92, 246, ${0.2 * (1 - distance / 100)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+                
+                // Draw connection to mouse
+                const mouseDistance = Math.sqrt((dot.x - mouse.x) ** 2 + (dot.y - mouse.y) ** 2);
+                if (mouseDistance < 150) {
+                    ctx.beginPath();
+                    ctx.moveTo(dot.x, dot.y);
+                    ctx.lineTo(mouse.x, mouse.y);
+                    ctx.strokeStyle = `rgba(168, 85, 247, ${0.4 * (1 - mouseDistance / 150)})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function animate() {
+            drawDots();
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            createDots();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        // Initialize
+        resizeCanvas();
+        createDots();
+        animate();
+    </script>
+</body>
+</html>

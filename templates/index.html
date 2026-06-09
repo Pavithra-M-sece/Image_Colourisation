@@ -6,6 +6,76 @@
     <title>AI Image Colorization</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .convert-box {
+            background: rgba(45, 45, 65, 0.95);
+            border: 1px solid rgba(139, 92, 246, 0.5);
+            border-radius: 20px;
+            padding: 36px 32px;
+            text-align: center;
+            margin: 20px 0;
+            animation: slideUp 0.4s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+        }
+        .convert-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #8b5cf6, #a855f7, #c084fc, #e879f9);
+        }
+        .convert-icon {
+            font-size: 2.8rem;
+            background: linear-gradient(45deg, #f59e0b, #fbbf24);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 14px;
+        }
+        .convert-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+        }
+        .convert-msg {
+            color: #9ca3af;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        .convert-msg strong { color: #fbbf24; }
+        .convert-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+        .convert-btn-yes {
+            background: linear-gradient(135deg, #8b5cf6, #a855f7);
+            color: white; border: none;
+            padding: 12px 28px; border-radius: 50px;
+            font-size: 0.95rem; font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer; transition: all 0.3s;
+            box-shadow: 0 6px 20px rgba(139,92,246,0.4);
+        }
+        .convert-btn-yes:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(139,92,246,0.55); }
+        .convert-btn-no {
+            background: rgba(220,38,38,0.1);
+            color: #fca5a5;
+            border: 1px solid rgba(220,38,38,0.3);
+            padding: 12px 28px; border-radius: 50px;
+            font-size: 0.95rem; font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer; transition: all 0.3s;
+        }
+        .convert-btn-no:hover { background: rgba(220,38,38,0.2); transform: translateY(-2px); }
+        .converted-tag {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(16,185,129,0.15);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #34d399; border-radius: 20px;
+            padding: 4px 12px; font-size: 0.82rem; font-weight: 600;
+            margin-bottom: 16px;
+        }
+    </style>
 </head>
 <body>
     <canvas id="dots-canvas"></canvas>
@@ -31,6 +101,23 @@
             </div>
 
             <div class="error" id="error" style="display: none;"></div>
+
+            <!-- Conversion permission modal -->
+            <div id="convertModal" style="display:none;">
+                <div class="convert-box">
+                    <div class="convert-icon"><i class="fas fa-file-export"></i></div>
+                    <div class="convert-title">Unsupported File Type Detected</div>
+                    <div class="convert-msg" id="convertMsg"></div>
+                    <div class="convert-actions">
+                        <button class="convert-btn-yes" id="convertYes">
+                            <i class="fas fa-check"></i> Yes, Convert &amp; Colorize
+                        </button>
+                        <button class="convert-btn-no" id="convertNo">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div class="results-section" id="results">
                 <div class="results-grid">
@@ -81,213 +168,187 @@
 
     <script>
         const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const loading = document.getElementById('loading');
-        const results = document.getElementById('results');
-        const error = document.getElementById('error');
-        const grayImage = document.getElementById('grayImage');
-        const colorizedImage = document.getElementById('colorizedImage');
-        const downloadBtn = document.getElementById('downloadBtn');
+        const fileInput  = document.getElementById('fileInput');
+        const loading    = document.getElementById('loading');
+        const results    = document.getElementById('results');
+        const error      = document.getElementById('error');
+        const grayImage       = document.getElementById('grayImage');
+        const colorizedImage  = document.getElementById('colorizedImage');
+        const downloadBtn     = document.getElementById('downloadBtn');
         const uploadAnotherBtn = document.getElementById('uploadAnotherBtn');
+        const convertModal    = document.getElementById('convertModal');
+        const convertMsg      = document.getElementById('convertMsg');
+        const convertYes      = document.getElementById('convertYes');
+        const convertNo       = document.getElementById('convertNo');
 
-        // Click to upload
-        uploadArea.addEventListener('click', () => {
-            fileInput.click();
+        const ALLOWED = ['image/jpeg','image/png','image/gif','image/bmp'];
+        let pendingFile = null;
+        let pendingTmp  = null;
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', e => {
+            e.preventDefault(); uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
         });
-
-        // Drag and drop functionality
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFile(files[0]);
-            }
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
-            }
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
         });
 
         function handleFile(file) {
-            if (!file.type.startsWith('image/')) {
-                showError('Please select a valid image file.');
+            if (file.size > 16 * 1024 * 1024) { showError('File size must be less than 16MB.'); return; }
+
+            if (ALLOWED.includes(file.type)) {
+                // Directly supported
+                uploadImage(file, false);
                 return;
             }
 
-            if (file.size > 16 * 1024 * 1024) {
-                showError('File size must be less than 16MB.');
-                return;
-            }
-
-            uploadImage(file);
+            // Check if server can convert it
+            const fd = new FormData();
+            fd.append('file', file);
+            fetch('/check-file', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    uploadImage(file, false, null);
+                } else if (data.status === 'needs_conversion') {
+                    pendingFile = file;
+                    pendingTmp  = data.tmp;
+                    convertMsg.innerHTML =
+                        `Your file <strong>${file.name}</strong> is a <strong>${data.ext}</strong> file, ` +
+                        `which is not directly supported.<br><br>` +
+                        `We can automatically convert it to <strong>PNG</strong> and then colorize it. ` +
+                        `Do you want to proceed?`;
+                    convertModal.style.display = 'block';
+                    results.style.display = 'none';
+                    hideError();
+                } else {
+                    showError(`Cannot process this file. It does not appear to be a valid image.`);
+                }
+            })
+            .catch(() => showError('Could not check file type. Please try again.'));
         }
 
-        function uploadImage(file) {
+        // User clicks "Yes, Convert & Colorize"
+        convertYes.addEventListener('click', () => {
+            convertModal.style.display = 'none';
+            if (pendingFile) uploadImage(pendingFile, true, pendingTmp);
+        });
+
+        // User clicks "Cancel"
+        convertNo.addEventListener('click', () => {
+            convertModal.style.display = 'none';
+            pendingFile = null; pendingTmp = null;
+            fileInput.value = '';
+        });
+
+        function uploadImage(file, convert, tmp) {
             const formData = new FormData();
-            formData.append('file', file);
+            if (tmp) {
+                // File already on server, just pass the tmp name + convert flag
+                formData.append('convert', 'true');
+                formData.append('tmp', tmp);
+            } else {
+                formData.append('file', file);
+                if (convert) formData.append('convert', 'true');
+            }
 
             hideError();
             results.style.display = 'none';
+            convertModal.style.display = 'none';
             loading.style.display = 'block';
 
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
+            fetch('/upload', { method: 'POST', body: formData })
+            .then(r => r.json())
             .then(data => {
                 loading.style.display = 'none';
-                
                 if (data.success) {
                     grayImage.src = data.gray_image;
                     colorizedImage.src = data.colorized_image;
+
+                    // Show converted tag if file was converted
+                    let tag = document.getElementById('convertedTag');
+                    if (data.converted) {
+                        if (!tag) {
+                            tag = document.createElement('div');
+                            tag.id = 'convertedTag';
+                            tag.className = 'converted-tag';
+                            tag.innerHTML = '<i class="fas fa-check-circle"></i> File auto-converted to PNG before colorizing';
+                            results.insertBefore(tag, results.firstChild);
+                        }
+                        tag.style.display = 'inline-flex';
+                    } else if (tag) {
+                        tag.style.display = 'none';
+                    }
+
                     results.style.display = 'block';
-                    
-                    // Setup download functionality
                     downloadBtn.onclick = () => {
                         const link = document.createElement('a');
                         link.href = data.colorized_image;
                         link.download = 'colorized_image.png';
                         link.click();
                     };
-                    
-                    // Setup upload another functionality
                     uploadAnotherBtn.onclick = () => {
                         results.style.display = 'none';
-                        fileInput.value = '';
-                        hideError();
+                        fileInput.value = ''; pendingFile = null; pendingTmp = null; hideError();
                     };
                 } else {
                     showError(data.error || 'An error occurred while processing your image.');
                 }
             })
-            .catch(err => {
-                loading.style.display = 'none';
-                showError('Network error. Please try again.');
-            });
+            .catch(() => { loading.style.display = 'none'; showError('Network error. Please try again.'); });
         }
 
-        function showError(message) {
-            error.textContent = message;
-            error.style.display = 'block';
-            setTimeout(() => {
-                hideError();
-            }, 5000);
+        function showError(msg) {
+            error.textContent = msg; error.style.display = 'block';
+            setTimeout(hideError, 6000);
         }
+        function hideError() { error.style.display = 'none'; }
 
-        function hideError() {
-            error.style.display = 'none';
-        }
-
-        // Interactive Dots Canvas
+        // Dots canvas
         const canvas = document.getElementById('dots-canvas');
         const ctx = canvas.getContext('2d');
-        let dots = [];
-        let mouse = { x: 0, y: 0 };
-
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-
+        let dots = [], mouse = { x: 0, y: 0 };
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         function createDots() {
             dots = [];
-            const numDots = Math.floor((canvas.width * canvas.height) / 15000);
-            
-            for (let i = 0; i < numDots; i++) {
-                dots.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    vx: (Math.random() - 0.5) * 0.5,
-                    vy: (Math.random() - 0.5) * 0.5,
-                    radius: Math.random() * 2 + 1
-                });
-            }
-        }
-
-        function drawDots() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            dots.forEach(dot => {
-                // Update position
-                dot.x += dot.vx;
-                dot.y += dot.vy;
-                
-                // Bounce off edges
-                if (dot.x < 0 || dot.x > canvas.width) dot.vx *= -1;
-                if (dot.y < 0 || dot.y > canvas.height) dot.vy *= -1;
-                
-                // Keep dots in bounds
-                dot.x = Math.max(0, Math.min(canvas.width, dot.x));
-                dot.y = Math.max(0, Math.min(canvas.height, dot.y));
-                
-                // Draw dot
-                ctx.beginPath();
-                ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(139, 92, 246, 0.6)';
-                ctx.fill();
-                
-                // Draw connections to nearby dots
-                dots.forEach(otherDot => {
-                    const dx = dot.x - otherDot.x;
-                    const dy = dot.y - otherDot.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (distance < 100) {
-                        ctx.beginPath();
-                        ctx.moveTo(dot.x, dot.y);
-                        ctx.lineTo(otherDot.x, otherDot.y);
-                        ctx.strokeStyle = `rgba(139, 92, 246, ${0.2 * (1 - distance / 100)})`;
-                        ctx.lineWidth = 0.5;
-                        ctx.stroke();
-                    }
-                });
-                
-                // Draw connection to mouse
-                const mouseDistance = Math.sqrt((dot.x - mouse.x) ** 2 + (dot.y - mouse.y) ** 2);
-                if (mouseDistance < 150) {
-                    ctx.beginPath();
-                    ctx.moveTo(dot.x, dot.y);
-                    ctx.lineTo(mouse.x, mouse.y);
-                    ctx.strokeStyle = `rgba(168, 85, 247, ${0.4 * (1 - mouseDistance / 150)})`;
-                    ctx.lineWidth = 1;
-                    ctx.stroke();
-                }
+            const n = Math.floor((canvas.width * canvas.height) / 15000);
+            for (let i = 0; i < n; i++) dots.push({
+                x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+                vx: (Math.random()-0.5)*0.5, vy: (Math.random()-0.5)*0.5,
+                radius: Math.random()*2+1
             });
         }
-
-        function animate() {
-            drawDots();
-            requestAnimationFrame(animate);
+        function drawDots() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            dots.forEach(dot => {
+                dot.x += dot.vx; dot.y += dot.vy;
+                if (dot.x<0||dot.x>canvas.width) dot.vx*=-1;
+                if (dot.y<0||dot.y>canvas.height) dot.vy*=-1;
+                dot.x = Math.max(0,Math.min(canvas.width,dot.x));
+                dot.y = Math.max(0,Math.min(canvas.height,dot.y));
+                ctx.beginPath(); ctx.arc(dot.x,dot.y,dot.radius,0,Math.PI*2);
+                ctx.fillStyle='rgba(139,92,246,0.6)'; ctx.fill();
+                dots.forEach(o => {
+                    const d = Math.sqrt((dot.x-o.x)**2+(dot.y-o.y)**2);
+                    if (d<100) {
+                        ctx.beginPath(); ctx.moveTo(dot.x,dot.y); ctx.lineTo(o.x,o.y);
+                        ctx.strokeStyle=`rgba(139,92,246,${0.2*(1-d/100)})`; ctx.lineWidth=0.5; ctx.stroke();
+                    }
+                });
+                const md = Math.sqrt((dot.x-mouse.x)**2+(dot.y-mouse.y)**2);
+                if (md<150) {
+                    ctx.beginPath(); ctx.moveTo(dot.x,dot.y); ctx.lineTo(mouse.x,mouse.y);
+                    ctx.strokeStyle=`rgba(168,85,247,${0.4*(1-md/150)})`; ctx.lineWidth=1; ctx.stroke();
+                }
+            });
+            requestAnimationFrame(drawDots);
         }
-
-        // Event listeners
-        window.addEventListener('resize', () => {
-            resizeCanvas();
-            createDots();
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-        });
-
-        // Initialize
-        resizeCanvas();
-        createDots();
-        animate();
+        window.addEventListener('resize', () => { resizeCanvas(); createDots(); });
+        document.addEventListener('mousemove', e => { mouse.x=e.clientX; mouse.y=e.clientY; });
+        resizeCanvas(); createDots(); drawDots();
     </script>
 </body>
 </html>
